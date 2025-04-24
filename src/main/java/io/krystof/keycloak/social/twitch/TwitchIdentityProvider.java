@@ -91,9 +91,7 @@ public class TwitchIdentityProvider extends AbstractOAuth2IdentityProvider<OAuth
     @Override
     public SimpleHttp authenticateTokenRequest(SimpleHttp tokenRequest) {
         logger.infof("Authenticating token request to: %s", tokenRequest.getUrl());
-        SimpleHttp authenticatedRequest = tokenRequest.param(OAUTH2_PARAMETER_GRANT_TYPE, OAUTH2_GRANT_TYPE_AUTHORIZATION_CODE);
-        logger.debugf("Token request parameters: grant_type=%s", OAUTH2_GRANT_TYPE_AUTHORIZATION_CODE);
-        return authenticatedRequest;
+        return super.authenticateTokenRequest(tokenRequest);
     }
 
     @Override
