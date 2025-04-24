@@ -1,0 +1,14 @@
+name: Shared Library Branch Build
+permissions:
+  contents: read
+  pull-requests: write
+on:
+  workflow_dispatch:
+  workflow_call:
+  push:
+    branches:
+      - '**'
+jobs:
+  top-level-shared-library:
+    uses: krystof-io/common-workflows/.github/workflows/top-level-shared-library-build.yaml@main
+    secrets: inherit
