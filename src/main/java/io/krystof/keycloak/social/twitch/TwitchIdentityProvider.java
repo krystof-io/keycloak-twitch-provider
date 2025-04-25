@@ -74,7 +74,7 @@ public class TwitchIdentityProvider extends AbstractOAuth2IdentityProvider<OAuth
         
         // Add Twitch-specific claims parameter for requesting email
         try {
-            String claimsJson = String claimsJson = "{\"id_token\":{\"email\":null,\"email_verified\":null},\"userinfo\":{\"email\":null,\"email_verified\":null,\"picture\":null}}";
+            String claimsJson = "{\"id_token\":{\"email\":null,\"email_verified\":null},\"userinfo\":{\"email\":null,\"email_verified\":null,\"picture\":null}}";
             String encodedClaims = URLEncoder.encode(claimsJson, StandardCharsets.UTF_8.toString());
             
             logger.infof("Adding claims parameter to Twitch authorization URL with value: %s", encodedClaims);
