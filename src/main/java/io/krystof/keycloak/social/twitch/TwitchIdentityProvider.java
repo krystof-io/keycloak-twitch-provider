@@ -23,6 +23,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Twitch Identity Provider implementation for Keycloak
@@ -97,7 +98,14 @@ public class TwitchIdentityProvider extends AbstractOAuth2IdentityProvider<OAuth
     @Override
     protected BrokeredIdentityContext extractIdentityFromProfile(EventBuilder event, JsonNode profile) {
         logger.infof("Extracting identity from Twitch profile");
-        logger.debugf("Raw profile data: %s", profile.toString());
+        
+        // Debug each field in the profile JSON
+        logger.info("Twitch profile data:");
+        Iterator<Map.Entry<String, JsonNode>> fields = profile.fields();
+        while (fields.hasNext()) {
+            Map.Entry<String, JsonNode> field = fields.next();
+            logger.infof("  %s: %s", field.getKey(), field.getValue().toString());
+        }
         
         String subjectId = getJsonProperty(profile, "sub");
         logger.infof("Subject ID from profile: %s", subjectId);
@@ -107,6 +115,21 @@ public class TwitchIdentityProvider extends AbstractOAuth2IdentityProvider<OAuth
         // Set mandatory fields
         String username = getJsonProperty(profile, "preferred_username");
         logger.infof("Username from profile: %s", username);
+        
+        // If preferred_username is not available, use email or sub
+        if (username == null || username.isEmpty()) {
+            String email = getJsonProperty(profile, "email");
+            if (email != null && !email.isEmpty()) {
+                // Use the part before @ as username
+                username = email.split("@")[0];
+                logger.infof("Using email prefix as username: %s", username);
+            } else {
+                // Use sub as last resort
+                username = subjectId;
+                logger.infof("Using subject ID as username: %s", username);
+            }
+        }
+        
         user.setUsername(username);
         user.setIdp(this);
 
@@ -129,12 +152,19 @@ public class TwitchIdentityProvider extends AbstractOAuth2IdentityProvider<OAuth
         // Add profile picture if available
         String picture = getJsonProperty(profile, "picture");
         if (picture != null) {
-            logger.infof("Profile picture URL found");
+            logger.infof("Profile picture URL found: %s", picture);
             user.setUserAttribute("picture", picture);
         }
 
         // Add all available profile data as attributes
         AbstractJsonUserAttributeMapper.storeUserProfileForMapper(user, profile, getConfig().getAlias());
+        
+        // Log all user attributes that were set
+        logger.info("User attributes set from Twitch profile:");
+        for (Map.Entry<String, List<String>> attr : user.getAttributes().entrySet()) {
+            logger.infof("  %s: %s", attr.getKey(), attr.getValue());
+        }
+        
         logger.infof("Completed extracting identity from Twitch profile");
 
         return user;
@@ -188,13 +218,37 @@ public class TwitchIdentityProvider extends AbstractOAuth2IdentityProvider<OAuth
             ObjectMapper objectMapper = new ObjectMapper();
             JsonNode node = objectMapper.readTree(response);
             
-            logger.debugf("Token response as JSON: %s", node.toString());
+            // Debug each field in the token response JSON
+            logger.info("Token response fields:");
+            Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
+            while (fields.hasNext()) {
+                Map.Entry<String, JsonNode> field = fields.next();
+                String fieldName = field.getKey();
+                JsonNode fieldValue = field.getValue();
+                
+                // For sensitive fields like tokens, mask the value
+                if (fieldName.contains("token")) {
+                    String maskedValue = "****";
+                    if (fieldValue.isTextual() && fieldValue.asText().length() > 8) {
+                        String text = fieldValue.asText();
+                        maskedValue = text.substring(0, 4) + "..." + text.substring(text.length() - 4);
+                    }
+                    logger.infof("  %s: %s", fieldName, maskedValue);
+                } else {
+                    logger.infof("  %s: %s", fieldName, fieldValue.toString());
+                }
+            }
             
             // Check if scope is an array and convert it to a space-separated string
             if (node.has("scope")) {
                 logger.infof("Scope found in token response");
                 if (node.get("scope").isArray()) {
-                    logger.infof("Scope is an array, converting to string");
+                    logger.info("Scope array contents:");
+                    ArrayNode scopeArray = (ArrayNode) node.get("scope");
+                    for (int i = 0; i < scopeArray.size(); i++) {
+                        logger.infof("  [%d]: %s", i, scopeArray.get(i).asText());
+                    }
+                    
                     String scopeString = convertScopeArrayToString(node.get("scope"));
                     ((ObjectNode) node).put("scope", scopeString);
                     
@@ -202,7 +256,6 @@ public class TwitchIdentityProvider extends AbstractOAuth2IdentityProvider<OAuth
                     
                     // Convert the modified node back to a string for further processing
                     response = objectMapper.writeValueAsString(node);
-                    logger.debugf("Modified token response: %s", response);
                     
                     // Re-extract the access token in case it was modified
                     accessToken = extractTokenFromResponse(response, getAccessTokenResponseParameter());
@@ -221,6 +274,26 @@ public class TwitchIdentityProvider extends AbstractOAuth2IdentityProvider<OAuth
         logger.infof("Getting federated identity with access token");
         BrokeredIdentityContext context = doGetFederatedIdentity(accessToken);
         context.getContextData().put(FEDERATED_ACCESS_TOKEN, accessToken);
+        
+        // Log context data
+        logger.info("Context data after identity federation:");
+        for (Map.Entry<String, Object> entry : context.getContextData().entrySet()) {
+            String key = entry.getKey();
+            Object value = entry.getValue();
+            
+            // Mask sensitive values
+            if (key.contains("token") && value instanceof String) {
+                String strValue = (String) value;
+                if (strValue.length() > 8) {
+                    logger.infof("  %s: %s", key, strValue.substring(0, 4) + "..." + strValue.substring(strValue.length() - 4));
+                } else {
+                    logger.infof("  %s: ****", key);
+                }
+            } else {
+                logger.infof("  %s: %s", key, value);
+            }
+        }
+        
         logger.infof("Successfully created brokered identity context");
         
         return context;
